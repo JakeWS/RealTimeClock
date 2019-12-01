@@ -80,15 +80,12 @@
 // This is necessary for CPU affinity macros in Linux
 #define _GNU_SOURCE
 
-#include <stdio.h>
-#include <stdlib.h>
 #include <unistd.h>
 
-#include <capture.h>
+#include "capture.h"
 
 #include <pthread.h>
 #include <sched.h>
-#include <time.h>
 #include <semaphore.h>
 
 #include <syslog.h>
@@ -143,6 +140,8 @@ void main(void)
     pthread_attr_t main_attr;
     pid_t mainpid;
     cpu_set_t allcpuset;
+
+    dev_name = "/dev/video0";
 
     printf("Starting Sequencer Demo\n");
     gettimeofday(&start_time_val, (struct timezone *)0);
@@ -307,7 +306,7 @@ void main(void)
  
     // Create Sequencer thread, which like a cyclic executive, is highest prio
     printf("Start sequencer\n");
-    threadParams[0].sequencePeriods=900;
+    threadParams[0].sequencePeriods=3600;
 
     // Sequencer = RT_MAX	@ 30 Hz
     //
