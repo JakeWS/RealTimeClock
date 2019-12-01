@@ -430,6 +430,13 @@ void *Service_1(void *threadp)
     while(!abortS1)
     {
         sem_wait(&semS1);
+        open_device();
+        init_device();
+        start_capturing();
+        mainloop();
+        stop_capturing();
+        uninit_device();
+        close_device();
         S1Cnt++;
 
         gettimeofday(&current_time_val, (struct timezone *)0);
