@@ -84,6 +84,8 @@
 #include <stdlib.h>
 #include <unistd.h>
 
+#include <capture.h>
+
 #include <pthread.h>
 #include <sched.h>
 #include <time.h>
