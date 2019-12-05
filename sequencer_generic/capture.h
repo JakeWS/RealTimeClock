@@ -330,7 +330,6 @@ static int read_frame(void)
                 {
                     case EAGAIN:
                         return 0;
-
                     case EIO:
                         /* Could ignore EIO, but drivers should only set for serious errors, although some set for
                            non-fatal errors too.
@@ -340,7 +339,7 @@ static int read_frame(void)
 
                     default:
                         printf("mmap failure\n");
-                        errno_exit("VIDIOC_DQBUF");
+                        //errno_exit("VIDIOC_DQBUF");
                 }
             }
 
@@ -756,6 +755,7 @@ static void init_device(void)
 
     if (force_format)
     {
+        
         printf("FORCING FORMAT\n");
         fmt.fmt.pix.width       = HRES;
         fmt.fmt.pix.height      = VRES;
@@ -764,6 +764,8 @@ static void init_device(void)
 
         // This one work for Logitech C200
         fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_YUYV;
+        //fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_MJPEG;
+        
 
         //fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_UYVY;
         //fmt.fmt.pix.pixelformat = V4L2_PIX_FMT_VYUY;
