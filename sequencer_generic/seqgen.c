@@ -121,7 +121,12 @@ void *Service_3(void *threadp);
 double getTimeMsec(void);
 void print_scheduler(void);
 
-
+//------------------------------------------------------------------------------
+// Function: main()
+// Description: The primary driver code for the program
+// Inputs: 
+// Outputs:
+//------------------------------------------------------------------------------
 void main(void)
 {
     struct timeval current_time_val;
@@ -254,7 +259,7 @@ void main(void)
  
     // Create Sequencer thread, which like a cyclic executive, is highest prio
     printf("Start sequencer\n");
-    threadParams[0].sequencePeriods=90000;
+    threadParams[0].sequencePeriods=18400; //3000 periods = 1 min, 50 periods = 1 sec
 
     // Sequencer = RT_MAX	@ 30 Hz
     //
@@ -273,7 +278,12 @@ void main(void)
    printf("\nTEST COMPLETE\n");
 }
 
-
+//------------------------------------------------------------------------------
+// Function:
+// Description:
+// Inputs:
+// Outputs:
+//------------------------------------------------------------------------------
 void *Sequencer(void *threadp)
 {
     struct timeval current_time_val;
@@ -355,7 +365,12 @@ void *Sequencer(void *threadp)
 }
 
 
-
+//------------------------------------------------------------------------------
+// Function:
+// Description:
+// Inputs:
+// Outputs:
+//------------------------------------------------------------------------------
 void *Service_1(void *threadp)
 {
     struct timeval current_time_val;
@@ -380,7 +395,12 @@ void *Service_1(void *threadp)
     pthread_exit((void *)0);
 }
 
-
+//------------------------------------------------------------------------------
+// Function:
+// Description:
+// Inputs:
+// Outputs:
+//------------------------------------------------------------------------------
 void *Service_2(void *threadp)
 {
     struct timeval current_time_val;
@@ -404,6 +424,12 @@ void *Service_2(void *threadp)
     pthread_exit((void *)0);
 }
 
+//------------------------------------------------------------------------------
+// Function:
+// Description:
+// Inputs:
+// Outputs:
+//------------------------------------------------------------------------------
 void *Service_3(void *threadp)
 {
     struct timeval current_time_val;
@@ -427,7 +453,12 @@ void *Service_3(void *threadp)
     pthread_exit((void *)0);
 }
 
-
+//------------------------------------------------------------------------------
+// Function:
+// Description:
+// Inputs:
+// Outputs:
+//------------------------------------------------------------------------------
 double getTimeMsec(void)
 {
   struct timespec event_ts = {0, 0};
@@ -436,7 +467,12 @@ double getTimeMsec(void)
   return ((event_ts.tv_sec)*1000.0) + ((event_ts.tv_nsec)/1000000.0);
 }
 
-
+//------------------------------------------------------------------------------
+// Function:
+// Description:
+// Inputs:
+// Outputs:
+//------------------------------------------------------------------------------
 void print_scheduler(void)
 {
    int schedType;

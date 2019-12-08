@@ -34,10 +34,10 @@
 
 #define CLEAR(x) memset(&(x), 0, sizeof(x))
 #define COLOR_CONVERT
-#define HRES 320
-#define VRES 240
-#define HRES_STR "320"
-#define VRES_STR "240"
+#define HRES 640
+#define VRES 480
+#define HRES_STR "640"
+#define VRES_STR "480"
 
 // Format is used by a number of functions, so made as a file global
 static struct v4l2_format fmt;
@@ -92,7 +92,7 @@ static void dump_ppm(const void *p, int size, unsigned int tag, struct timespec 
 {
     int written, i, total, dumpfd;
    
-    snprintf(&ppm_dumpname[4], 9, "%08d", tag);
+    snprintf(&ppm_dumpname[4], 9, "%08d", tag-8);
     strncat(&ppm_dumpname[12], ".ppm", 5);
     dumpfd = open(ppm_dumpname, O_WRONLY | O_NONBLOCK | O_CREAT, 00666);
 
@@ -110,7 +110,7 @@ static void dump_ppm(const void *p, int size, unsigned int tag, struct timespec 
         total+=written;
     } while(total < size);
 
-    printf("wrote %d bytes\n", total);
+    //printf("wrote %d bytes\n", total);
 
     close(dumpfd);
     
@@ -225,7 +225,7 @@ static void process_image(const void *p, int size)
     clock_gettime(CLOCK_REALTIME, &frame_time);    
 
     framecnt++;
-    printf("frame %d: ", framecnt);
+    //syslog(LOG_CRIT, "frame %d: ", framecnt);
 
     // This just dumps the frame to a file now, but you could replace with whatever image
     // processing you wish.
@@ -241,7 +241,7 @@ static void process_image(const void *p, int size)
     {
 
 #if defined(COLOR_CONVERT)
-        printf("Dump YUYV converted to RGB size %d\n", size);
+        //printf("Dump YUYV converted to RGB size %d\n", size);
        
         // Pixels are YU and YV alternating, so YUYV which is 4 bytes
         // We want RGB, so RGBRGB which is 6 bytes
@@ -253,7 +253,8 @@ static void process_image(const void *p, int size)
             yuv2rgb(y2_temp, u_temp, v_temp, &bigbuffer[newi+3], &bigbuffer[newi+4], &bigbuffer[newi+5]);
         }
 
-        dump_ppm(bigbuffer, ((size*6)/4), framecnt, &frame_time);
+        if (framecnt > 8)                                                     // Get rid of the first 8 frames
+            dump_ppm(bigbuffer, ((size*6)/4), framecnt, &frame_time);
 #else
         printf("Dump YUYV converted to YY size %d\n", size);
        
@@ -439,7 +440,7 @@ static void mainloop(void)
                 if(nanosleep(&read_delay, &time_error) != 0)
                     perror("nanosleep");
                 else
-                    printf("time_error.tv_sec=%ld, time_error.tv_nsec=%ld\n", time_error.tv_sec, time_error.tv_nsec);
+                    //syslog(LOG_CRIT, "time_error.tv_sec=%ld, time_error.tv_nsec=%ld\n", time_error.tv_sec, time_error.tv_nsec);
 
                 count--;
                 break;
