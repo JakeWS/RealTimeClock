@@ -94,16 +94,16 @@
 #include <errno.h>
 
 #define USEC_PER_MSEC (1000)
-#define NANOSEC_PER_SEC (1000000000)
+#define NANOSEC_PER_SEC (100000000)
 #define NUM_CPU_CORES (1)
 #define TRUE (1)
 #define FALSE (0)
 
-#define NUM_THREADS (3+1)
+#define NUM_THREADS (2+1)
 
 int abortTest=FALSE;
-int abortS1=FALSE, abortS2=FALSE, abortS3=FALSE;
-sem_t semS1, semS2, semS3;
+int abortS1=FALSE, abortS2=FALSE;
+sem_t semS1, semS2;
 struct timeval start_time_val;
 
 typedef struct
@@ -112,16 +112,19 @@ typedef struct
     unsigned long long sequencePeriods;
 } threadParams_t;
 
-
 void *Sequencer(void *threadp);
 
 void *Service_1(void *threadp);
 void *Service_2(void *threadp);
-void *Service_3(void *threadp);
 double getTimeMsec(void);
 void print_scheduler(void);
 
-
+//------------------------------------------------------------------------------
+// Function: main()
+// Description: The primary driver code for the program
+// Inputs: 
+// Outputs:
+//------------------------------------------------------------------------------
 void main(void)
 {
     struct timeval current_time_val;
@@ -158,7 +161,6 @@ void main(void)
     //
     if (sem_init (&semS1, 0, 0)) { printf ("Failed to initialize S1 semaphore\n"); exit (-1); }
     if (sem_init (&semS2, 0, 0)) { printf ("Failed to initialize S2 semaphore\n"); exit (-1); }
-    if (sem_init (&semS3, 0, 0)) { printf ("Failed to initialize S3 semaphore\n"); exit (-1); }
 
     mainpid=getpid();
 
@@ -232,18 +234,6 @@ void main(void)
     else
         printf("pthread_create successful for service 2\n");
 
-
-    // Service_3 = RT_MAX-3	@ 0.5 Hz
-    //
-    rt_param[3].sched_priority=rt_max_prio-3;
-    pthread_attr_setschedparam(&rt_sched_attr[3], &rt_param[3]);
-    rc=pthread_create(&threads[3], &rt_sched_attr[3], Service_3, (void *)&(threadParams[3]));
-    if(rc < 0)
-        perror("pthread_create for service 3");
-    else
-        printf("pthread_create successful for service 3\n");
-
-
     // Wait for service threads to initialize and await relese by sequencer.
     //
     // Note that the sleep is not necessary of RT service threads are created wtih 
@@ -254,7 +244,7 @@ void main(void)
  
     // Create Sequencer thread, which like a cyclic executive, is highest prio
     printf("Start sequencer\n");
-    threadParams[0].sequencePeriods=90000;
+    threadParams[0].sequencePeriods=9500; //3000 periods = 1 min, 50 periods = 1 sec
 
     // Sequencer = RT_MAX	@ 30 Hz
     //
@@ -268,54 +258,57 @@ void main(void)
 
 
    for(i=0;i<NUM_THREADS;i++)
-       pthread_join(threads[i], NULL);
+       pthread_join(threads[1], NULL);
 
    printf("\nTEST COMPLETE\n");
 }
 
-
+//------------------------------------------------------------------------------
+// Function:
+// Description:
+// Inputs:
+// Outputs:
+//------------------------------------------------------------------------------
 void *Sequencer(void *threadp)
 {
+//    clock_gettime(CLOCK_REALTIME, &frame_time);
     struct timeval current_time_val;
-    struct timespec delay_time = {0,20000000}; // delay for 0.50 sec, 2 Hz
+    struct timespec delay_time = {0,100000000}; // delay for 0.50 sec, 10 Hz
+    struct timespec initialTime;
+    struct timespec expectedTime;
     struct timespec remaining_time;
+    int initialRun = 1;
     double current_time;
     double residual;
     int rc, delay_cnt=0;
     unsigned long long seqCnt=0;
     threadParams_t *threadParams = (threadParams_t *)threadp;
 
-    gettimeofday(&current_time_val, (struct timezone *)0);
-    syslog(LOG_CRIT, "Sequencer thread @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-    printf("Sequencer thread @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
+    clock_gettime(CLOCK_REALTIME, &initialTime);
+    syslog(LOG_CRIT, "Sequencer thread @ system time: sec=%d, nsec=%d\n", (int)(initialTime.tv_sec), (int)initialTime.tv_nsec);
+    printf("Sequencer thread @ system time: sec=%d, nsec=%d\n", (int)(initialTime.tv_sec), (int)initialTime.tv_nsec);
 
         open_device();
         init_device();
         start_capturing();
-        
+
+        clock_gettime(CLOCK_REALTIME, &initialTime);
+        expectedTime.tv_sec=initialTime.tv_sec+1;
+        expectedTime.tv_nsec=initialTime.tv_nsec;
+
     do
     {
-        delay_cnt=0; residual=0.0;
+        if (initialRun == 1)
+        {
+            printf("Press ENTER key to Continue\n");  
+            getchar();
+            clock_gettime(CLOCK_REALTIME, &initialTime);
+        }
 
-        //gettimeofday(&current_time_val, (struct timezone *)0);
-        //syslog(LOG_CRIT, "Sequencer thread prior to delay @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
+        delay_cnt=0; residual=0.0;
         do
         {
             rc=nanosleep(&delay_time, &remaining_time);
-
-            if(rc == EINTR)
-            { 
-                residual = remaining_time.tv_sec + ((double)remaining_time.tv_nsec / (double)NANOSEC_PER_SEC);
-
-                if(residual > 0.0) printf("residual=%lf, sec=%d, nsec=%d\n", residual, (int)remaining_time.tv_sec, (int)remaining_time.tv_nsec);
- 
-                delay_cnt++;
-            }
-            else if(rc < 0)
-            {
-                perror("Sequencer nanosleep");
-                exit(-1);
-            }
            
         } while((residual > 0.0) && (delay_cnt < 100));
 
@@ -329,23 +322,62 @@ void *Sequencer(void *threadp)
 
         // Release each service at a sub-rate of the generic sequencer rate
 
-        // Servcie_1 = RT_MAX-1	@ 3 Hz
+        // Servcie_1 = RT_MAX-1	@ 1 Hz
         if((seqCnt % 50) == 0) sem_post(&semS1);
+ 
 
         // Service_2 = RT_MAX-2	@ 1 Hz
         if((seqCnt % 50) == 0) sem_post(&semS2);
 
-        // Service_3 = RT_MAX-3	@ 0.5 Hz
-        if((seqCnt % 50) == 0) sem_post(&semS3);
-
         //gettimeofday(&current_time_val, (struct timezone *)0);
-        //syslog(LOG_CRIT, "Sequencer release all sub-services @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
+        //syslog(LOG_CRIT, "Sequencer release all sub-services @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)curre   nt_time_val.tv_usec/USEC_PER_MSEC);
+
+                
+        clock_gettime(CLOCK_REALTIME, &initialTime);
+        printf("Initial: %ds %dns\n", (int)initialTime.tv_sec, (int)initialTime.tv_nsec);
+        printf("Expected: %ds %dns\n", (int)expectedTime.tv_sec, (int)expectedTime.tv_nsec);
+        printf("Delay: %ds %dns\n", (int)delay_time.tv_sec, (int)delay_time.tv_nsec); 
+        printf("fix: %dns\n", (int)initialTime.tv_nsec/USEC_PER_MSEC - (int)expectedTime.tv_nsec/USEC_PER_MSEC);
+        
+        if(initialRun == 1)
+        {
+            initialRun = 0;
+            if ((initialTime.tv_nsec/USEC_PER_MSEC - expectedTime.tv_nsec/USEC_PER_MSEC) > 0)
+            {  
+                delay_time.tv_nsec = delay_time.tv_nsec - ((initialTime.tv_nsec/USEC_PER_MSEC - expectedTime.tv_nsec/USEC_PER_MSEC));  
+            }        
+            else if ((initialTime.tv_nsec/USEC_PER_MSEC - expectedTime.tv_nsec/USEC_PER_MSEC) < 0)
+            {       
+                delay_time.tv_nsec = delay_time.tv_nsec + ((initialTime.tv_nsec/USEC_PER_MSEC - expectedTime.tv_nsec/USEC_PER_MSEC));
+            }
+        }
+        else
+        {
+            if (delay_time.tv_nsec > 20000000 && (initialTime.tv_nsec/USEC_PER_MSEC - expectedTime.tv_nsec/USEC_PER_MSEC) > 0)
+            {  
+                delay_time.tv_nsec = delay_time.tv_nsec - ((initialTime.tv_nsec/USEC_PER_MSEC - expectedTime.tv_nsec/USEC_PER_MSEC));  
+            }        
+            else if (delay_time.tv_nsec > 20000000 && (initialTime.tv_nsec/USEC_PER_MSEC - expectedTime.tv_nsec/USEC_PER_MSEC) < 0)
+            {       
+                delay_time.tv_nsec = delay_time.tv_nsec + ((initialTime.tv_nsec/USEC_PER_MSEC - expectedTime.tv_nsec/USEC_PER_MSEC));
+            } 
+            else if (delay_time.tv_nsec < 20000000 && (initialTime.tv_nsec/USEC_PER_MSEC - expectedTime.tv_nsec/USEC_PER_MSEC) > 0)
+            {       
+                delay_time.tv_nsec = delay_time.tv_nsec + ((initialTime.tv_nsec/USEC_PER_MSEC - expectedTime.tv_nsec/USEC_PER_MSEC));
+            }
+            else if (delay_time.tv_nsec < 20000000 && (initialTime.tv_nsec/USEC_PER_MSEC - expectedTime.tv_nsec/USEC_PER_MSEC) < 0)
+            {       
+                delay_time.tv_nsec = delay_time.tv_nsec - ((initialTime.tv_nsec/USEC_PER_MSEC - expectedTime.tv_nsec/USEC_PER_MSEC));
+            }             
+            //printf("Expected time%d")
+        }
+        expectedTime.tv_sec = expectedTime.tv_sec + 1;
 
     } while(!abortTest && (seqCnt < threadParams->sequencePeriods));
 
-    sem_post(&semS1); sem_post(&semS2); sem_post(&semS3);
+    sem_post(&semS1); sem_post(&semS2);;
 
-    abortS1=TRUE; abortS2=TRUE; abortS3=TRUE;
+    abortS1=TRUE; abortS2=TRUE;;
 
     pthread_exit((void *)0);
 
@@ -355,7 +387,12 @@ void *Sequencer(void *threadp)
 }
 
 
-
+//------------------------------------------------------------------------------
+// Function:
+// Description:
+// Inputs:
+// Outputs:
+//------------------------------------------------------------------------------
 void *Service_1(void *threadp)
 {
     struct timeval current_time_val;
@@ -380,12 +417,17 @@ void *Service_1(void *threadp)
     pthread_exit((void *)0);
 }
 
-
+//------------------------------------------------------------------------------
+// Function:
+// Description:
+// Inputs:
+// Outputs:
+//------------------------------------------------------------------------------
 void *Service_2(void *threadp)
 {
     struct timeval current_time_val;
     double current_time;
-    unsigned long long S2Cnt=0;
+    int count = 0;
     threadParams_t *threadParams = (threadParams_t *)threadp;
 
     gettimeofday(&current_time_val, (struct timezone *)0);
@@ -395,39 +437,22 @@ void *Service_2(void *threadp)
     while(!abortS2)
     {
         sem_wait(&semS2);
-        S2Cnt++;
+        dump_ppm((1280*720), count);
+        count++;
 
         gettimeofday(&current_time_val, (struct timezone *)0);
-        syslog(LOG_CRIT, "Time-stamp with Image Analysis release %llu @ sec=%d, msec=%d\n", S2Cnt, (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
+        syslog(LOG_CRIT, "Time-stamp with Image Analysis release %d @ sec=%d, msec=%d\n", count, (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
     }
 
     pthread_exit((void *)0);
 }
 
-void *Service_3(void *threadp)
-{
-    struct timeval current_time_val;
-    double current_time;
-    unsigned long long S3Cnt=0;
-    threadParams_t *threadParams = (threadParams_t *)threadp;
-
-    gettimeofday(&current_time_val, (struct timezone *)0);
-    syslog(LOG_CRIT, "3 Difference Image Proc thread @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-    printf("Difference Image Proc thread @ sec=%d, msec=%d\n", (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-
-    while(!abortS3)
-    {
-        sem_wait(&semS3);
-        S3Cnt++;
-
-        gettimeofday(&current_time_val, (struct timezone *)0);
-        syslog(LOG_CRIT, "Difference Image Proc release %llu @ sec=%d, msec=%d\n", S3Cnt, (int)(current_time_val.tv_sec-start_time_val.tv_sec), (int)current_time_val.tv_usec/USEC_PER_MSEC);
-    }
-
-    pthread_exit((void *)0);
-}
-
-
+//------------------------------------------------------------------------------
+// Function:
+// Description:
+// Inputs:
+// Outputs:
+//------------------------------------------------------------------------------
 double getTimeMsec(void)
 {
   struct timespec event_ts = {0, 0};
@@ -436,7 +461,12 @@ double getTimeMsec(void)
   return ((event_ts.tv_sec)*1000.0) + ((event_ts.tv_nsec)/1000000.0);
 }
 
-
+//------------------------------------------------------------------------------
+// Function:
+// Description:
+// Inputs:
+// Outputs:
+//------------------------------------------------------------------------------
 void print_scheduler(void)
 {
    int schedType;

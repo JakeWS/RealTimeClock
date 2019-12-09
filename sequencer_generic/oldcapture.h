@@ -68,8 +68,7 @@ struct buffer          *buffers;
 static unsigned int     n_buffers;
 static int              out_buf;
 static int              force_format=1;
-static int              frame_count = 1;
-
+static int              frame_count = 20;
 
 static void errno_exit(const char *s)
 {
@@ -90,14 +89,11 @@ static int xioctl(int fh, int request, void *arg)
         return r;
 }
 
-unsigned char ringBuffer[1800][1280*720];
-struct timespec ringTimeBuffer[1800];
 unsigned int framecnt=0;
-
 char ppm_header[]="P6\n#9999999999 sec 9999999999 msec \n"HRES_STR" "VRES_STR"\n255\n";
 char ppm_dumpname[]="test00000000.ppm";
 
-static void dump_ppm(/*const void *p, */int size, unsigned int tag /*struct timespec *time*/)
+static void dump_ppm(const void *p, int size, unsigned int tag, struct timespec *time)
 {
     int written, i, total, dumpfd;
    
@@ -105,9 +101,9 @@ static void dump_ppm(/*const void *p, */int size, unsigned int tag /*struct time
     strncat(&ppm_dumpname[12], ".ppm", 5);
     dumpfd = open(ppm_dumpname, O_WRONLY | O_NONBLOCK | O_CREAT, 00666);
 
-    snprintf(&ppm_header[4], 11, "%010d", (int)ringTimeBuffer[tag].tv_sec);
+    snprintf(&ppm_header[4], 11, "%010d", (int)time->tv_sec);
     strncat(&ppm_header[14], " sec ", 5);
-    snprintf(&ppm_header[19], 11, "%010d", (int)((ringTimeBuffer[tag].tv_nsec)/1000000));
+    snprintf(&ppm_header[19], 11, "%010d", (int)((time->tv_nsec)/1000000));
     strncat(&ppm_header[29], " msec \n"HRES_STR" "VRES_STR"\n255\n", 19);
     written=write(dumpfd, ppm_header, sizeof(ppm_header));
 
@@ -115,7 +111,7 @@ static void dump_ppm(/*const void *p, */int size, unsigned int tag /*struct time
 
     do
     {
-        written=write(dumpfd, ringBuffer[tag], size);
+        written=write(dumpfd, p, size);
         total+=written;
     } while(total < size);
 
@@ -127,44 +123,46 @@ static void dump_ppm(/*const void *p, */int size, unsigned int tag /*struct time
 
 
 char pgm_header[]="P5\n#9999999999 sec 9999999999 msec \n"HRES_STR" "VRES_STR"\n255\n";
-char pgm_dumpname[]="test.pgm";
+char pgm_dumpname[]="test00000000.pgm";
 
 static void dump_pgm(const void *p, int size, unsigned int tag, struct timespec *time)
 {
-    if (tag > 10)
+    int written, i, total, dumpfd;
+   
+    snprintf(&pgm_dumpname[4], 9, "%08d", tag);
+    strncat(&pgm_dumpname[12], ".pgm", 5);
+    dumpfd = open(pgm_dumpname, O_WRONLY | O_NONBLOCK | O_CREAT, 00666);
+
+    snprintf(&pgm_header[4], 11, "%010d", (int)time->tv_sec);
+    strncat(&pgm_header[14], " sec ", 5);
+    snprintf(&pgm_header[19], 11, "%010d", (int)((time->tv_nsec)/1000000));
+    strncat(&pgm_header[29], " msec \n"HRES_STR" "VRES_STR"\n255\n", 19);
+    written=write(dumpfd, pgm_header, sizeof(pgm_header));
+
+    total=0;
+
+    do
     {
-        tag-=9;
-        int written, i, total, dumpfd;
-       
-        snprintf(&pgm_dumpname[4], 9, "%08d", tag);
-        strncat(&pgm_dumpname[12], ".pgm", 5);
-        dumpfd = open(pgm_dumpname, O_WRONLY | O_NONBLOCK | O_CREAT, 00666);
+        written=write(dumpfd, p, size);
+        total+=written;
+    } while(total < size);
 
-        snprintf(&pgm_header[4], 11, "%010d", (int)time->tv_sec);
-        strncat(&pgm_header[14], " sec ", 5);
-        snprintf(&pgm_header[19], 11, "%010d", (int)((time->tv_nsec)/1000000));
-        strncat(&pgm_header[29], " msec \n"HRES_STR" "VRES_STR"\n255\n", 19);
-        written=write(dumpfd, pgm_header, sizeof(pgm_header));
+    printf("wrote %d bytes\n", total);
 
-        total=0;
-
-        do
-        {
-            written=write(dumpfd, p, size);
-            total+=written;
-        } while(total < size);
-
-        printf("wrote %d bytes\n", total);
-
-        close(dumpfd);
-    }
+    close(dumpfd);
     
 }
 
 
+
 /*static void dump2Ring(const void *p, int size, unsigned int count, struct timespec *frame_time)
 {
-            ringBuffer[count] = p;
+        ringBuffer[count-1] = p;
+        if (count == 1)
+            for(int idx = 0; idx < 20; idx++)
+            {
+                dump_ppm(ringBuffer[idx], size, framecnt, frame_time);
+            }
 }*/
 
 void yuv2rgb_float(float y, float u, float v, 
@@ -230,19 +228,19 @@ void yuv2rgb(int y, int u, int v, unsigned char *r, unsigned char *g, unsigned c
 
 
 unsigned char bigbuffer[(1280*960)];
-//int nextCycle = 0;
+unsigned char ringBuffer[20][1280*720];
+int nextCycle = 0;
 
 static void process_image(const void *p, int size, int count)
 {
-    int i, newi, /*change1= 0, change2 = 0,*/ newsize=0;
+    int i, newi, change1= 0, change2 = 0, newsize=0;
     struct timespec frame_time;
     int y_temp, y2_temp, u_temp, v_temp;
     unsigned char *pptr = (unsigned char *)p;
 
 
     // record when process was called
-    clock_gettime(CLOCK_REALTIME, &frame_time);
-    framecnt++;   
+    clock_gettime(CLOCK_REALTIME, &frame_time);   
 //syslog(LOG_CRIT, "frame %d: ", framecnt);
 
 // This just dumps the frame to a file now, but you could replace with whatever image
@@ -262,12 +260,45 @@ static void process_image(const void *p, int size, int count)
         yuv2rgb(y_temp, u_temp, v_temp, &bigbuffer[newi], &bigbuffer[newi+1], &bigbuffer[newi+2]);
         yuv2rgb(y2_temp, u_temp, v_temp, &bigbuffer[newi+3], &bigbuffer[newi+4], &bigbuffer[newi+5]);            
     }
+    if (nextCycle)
+    {
+        dump_ppm(bigbuffer, ((size*6)/4), framecnt, &frame_time);
+        framecnt++;
+        nextCycle=0;
+    }
+    else
+    {
+        for(int idx = 0; idx < ((size*6)/4); idx++)
+            ringBuffer[count-1][idx] = bigbuffer[idx];
+        printf("%d\n", *ringBuffer[count-1]);
+        if(count == 1)
+        {
+            for(int idx1 = 19, idx2 = 1; idx1 > 0; idx1--, idx2++)
+            {
+                if (abs(*ringBuffer[idx1+1]-*ringBuffer[idx1]) > change1)
+                    {
+                        change1 = abs(*ringBuffer[idx1+1]-*ringBuffer[idx1]);
+                        change2 = idx1-2;
+                        printf("Change of: %d\n", abs(*ringBuffer[idx1+1]-*ringBuffer[idx1]));
+                    }            
+                if(idx1 == 1)
+                {
+                        if (change2 <= 2)
+                            {
+                                nextCycle = 1;
+                                break;
+                            }
+                    printf("Change of %d @ frame: %d\n", change1, change2);
+                    dump_ppm(ringBuffer[change2], ((size*6)/4), framecnt, &frame_time);
+                    framecnt++;
+                    break;
+                }
+            }
+        }
+    }
 
-        if (framecnt > 10)//dump_ppm(bigbuffer, ((size*6)/4), framecnt, &frame_time);
-        {for (int idx = 0; idx < ((size*6)/4); idx++)
-            ringBuffer[framecnt][idx] = bigbuffer[idx];}
-        
-               // Get rid of the first 8 frames                                             
+//dump2Ring(bigbuffer, ((size*6)/4), count, &frame_time);
+        //if (framecnt > 8)       // Get rid of the first 8 frames                                             
         //dump_ppm(bigbuffer, ((size*6)/4), framecnt, &frame_time);
 
     fflush(stderr);
@@ -390,7 +421,7 @@ static void mainloop(void)
     struct timespec time_error;
 
     read_delay.tv_sec=0;
-    read_delay.tv_nsec=0;
+    read_delay.tv_nsec=30000;
 
     count = frame_count;
 
@@ -540,7 +571,7 @@ static void init_mmap(void)
 
         CLEAR(req);
 
-        req.count = 6;
+        req.count = 36;
         req.type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
         req.memory = V4L2_MEMORY_MMAP;
 

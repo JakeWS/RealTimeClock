@@ -7,25 +7,19 @@ CFLAGS= -O0 -g $(INCLUDE_DIRS) $(CDEFS)
 LIBS= 
 
 HFILES= 
-CFILES= seqgenex0.c seqgen.c seqgen2.c
+CFILES= seqgen.c
 
 SRCS= ${HFILES} ${CFILES}
 OBJS= ${CFILES:.c=.o}
 
-all:	seqgenex0 seqgen seqgen2
+all:	seqgen
 
 clean:
 	-rm -f *.o *.d
-	-rm -f seqgenex0 seqgen seqgen2
-
-seqgenex0: seqgenex0.o
-	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ $@.o -lpthread -lrt
-
-seqgen2: seqgen2.o
-	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ $@.o -lpthread -lrt
+	-rm -f seqgen
 
 seqgen: seqgen.o
-	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ $@.o -lpthread -lrt
+	$(CC) $(LDFLAGS) $(CFLAGS) -o $@ $@.o `pkg-config --libs opencv` -lpthread -lrt
 
 depend:
 
